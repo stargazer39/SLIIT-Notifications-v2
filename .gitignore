@@ -121,3 +121,4 @@ dist
 tmp
 mintty.exe.stackdump
 .vscode
+config
