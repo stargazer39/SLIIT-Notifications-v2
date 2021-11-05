@@ -1,7 +1,7 @@
 import { Context, Telegraf } from 'telegraf';
 import fs from 'fs';
 import { sleep } from './common';
-import { SqlConnect } from './sql';
+import { SqlConnect } from './SqlConnect';
 import mysql from 'promise-mysql';
 
 const CREDS_PATH = "config/credentials.json";
