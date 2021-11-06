@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@types/tough-cookie": "^4.0.1",
+    "ansi-to-html": "^0.7.2",
     "axios": "^0.21.1",
     "axios-cookiejar-support": "^1.0.1",
     "cheerio": "^1.0.0-rc.10",
@@ -38,6 +39,7 @@
     "promise-mysql": "^5.0.4",
     "puppeteer": "^10.1.0",
     "telegraf": "^4.4.0",
+    "telegraf-better-stage": "^1.0.1",
     "tough-cookie": "^4.0.0",
     "uuid": "^8.3.2"
   }
