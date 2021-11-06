@@ -1,8 +1,10 @@
-import { Context, Telegraf } from 'telegraf';
+import { Context, Telegraf, Markup, Scenes, session } from 'telegraf';
 import fs from 'fs';
-import { sleep } from './common';
-import { SqlConnect } from './SqlConnect';
+import { sleep } from '../common';
+import { SqlConnect } from '../SqlConnect';
 import mysql from 'promise-mysql';
+import { subscribeScene } from './SubscribeScene';
+
 
 const CREDS_PATH = "config/credentials.json";
 const MAX_LENGTH = 3500;
@@ -33,10 +35,42 @@ export class TelegramBot {
 
             this.token = this.getToken();
             this.bot = new Telegraf(this.token);
+            // this.bot.use(session());
+            // const stage = new Scenes.Stage([subscribeScene]);
 
+            // this.bot.use(stage.middleware());
             // Add event listeners
-            this.bot.command("start", (ctx) => {
-                ctx.reply("Hi");
+            this.bot.command("/list", async (ctx) => {
+                const conn = SqlConnect.getInstance();
+                let pages = await conn.query({
+                    sql: "SELECT id, name FROM sites"
+                });
+                let options : string[] = pages.map((obj : { id : number, name : string }) => { return `/sub_${obj.id} ${obj.name}`});
+                
+                ctx.reply(`Select from here\n ${options.join("\n")}`);
+            })
+            this.bot.hears(/\/sub_/, async (ctx) => {
+                try{
+                    let message = ctx.message.text;
+                    let param = message.split("_");
+
+                    let id = Number.parseInt(param[param.length - 1]);
+
+                    await conn.query({
+                        sql: "INSERT INTO telegram_subscribed(group_id,site_id) VALUES (?,?)",
+                        values: [ctx.chat.id,id]
+                    });
+
+                    ctx.reply("Subbed to " + id + "!");
+                }catch(e){
+                    switch(e.code){
+                        case "ER_DUP_ENTRY":
+                            ctx.reply("Already subbed.");
+                            return;
+                    }
+                    console.dir(e);
+                    ctx.reply("Something went wrong.");
+                }
             });
 
             this.bot.command("/addme", async (ctx) => {
@@ -58,7 +92,8 @@ export class TelegramBot {
                     }
                     
                 }
-            })
+            });
+
             console.log("Bot Initialized.");
         }
     }
@@ -70,7 +105,7 @@ export class TelegramBot {
     public static async sendMessage(message : string, chatId : number) {
         let count = 0;
         while(count < message.length){
-            await this.bot.telegram.sendMessage(chatId,message.substring(count,count + MAX_LENGTH),);
+            await this.bot.telegram.sendMessage(chatId,message.substring(count,count + MAX_LENGTH),{ parse_mode:"HTML" });
             count += MAX_LENGTH;
             if(count < message.length){
                 await sleep(MESSAGE_TIMEOUT);
@@ -81,6 +116,23 @@ export class TelegramBot {
     public static async sendMessageToAll(message : string) {
         for(const id of this.chatIds){
             await this.sendMessage(message, id);
+        }
+    }
+
+    public static async sendMessagesToSubscribed(site_id : number, message : string){
+        try{
+            let conn = SqlConnect.getInstance();
+            let chat_ids = await conn.query({
+                sql:"SELECT group_id FROM telegram_subscribed WHERE site_id = ?", 
+                values: [site_id]
+            });
+
+            for(let obj of chat_ids){
+                this.sendMessage(message, obj.group_id);
+                console.log(`Sent to group : ${obj.chat_id}`);
+            }
+        }catch(e){
+            console.log(e);
         }
     }
 
