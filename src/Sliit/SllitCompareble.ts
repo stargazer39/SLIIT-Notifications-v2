@@ -4,6 +4,7 @@ import { SliitPage } from "./SliitPage";
 import { SubPage } from "../SubPage";
 import { SqlConnect } from "../SqlConnect";
 import { compareHTML } from "../DomCompare";
+import { TelegramBot } from "../TelegramBot/TelegramBot";
 
 import axios from "axios";
 import axiosCookieJarSupport from "axios-cookiejar-support";
@@ -13,6 +14,8 @@ import tough from "tough-cookie";
 import mysql from "promise-mysql";
 import fs from "fs";
 import zlib from "zlib";
+const Convert = require('ansi-to-html');
+const convert = new Convert();
 
 axiosCookieJarSupport(axios);
 
@@ -152,7 +155,6 @@ export class SliitCompareble extends SiteComparable {
 
 
     public async reloadSubPages(): Promise<void> {
-        // throw new Error("Method not implemented.");
         if(!await this.login()) {
             throw new Error(`Login falied on site id ${this.id}`);
         }
@@ -169,92 +171,148 @@ export class SliitCompareble extends SiteComparable {
         let conn = SqlConnect.getInstance();
 
         for(let[key, obj] of this.subPages.entries()){
-            console.log(`Syncing ${obj.getId()}, name = ${obj.getName()}`);
-            // Get last history
-            let history = await conn.query({
-                sql:"SELECT id, page_source FROM page_history WHERE sub_page_id = ? ORDER BY id DESC LIMIT 1",
-                values:[obj.getId()]
-            });
+            let retryCount = 10;
+            let done = false;
 
-            if(history.length === 0){
-                console.log("No histroy. Adding page..");
-                let content = await obj.getContent();
-                
+            while(!done && retryCount > 0){
+                try{
+                    let result = await this.syncPage(obj,conn);
 
-                content =  zlib.deflateSync(content).toString('base64');
-                // fs.writeFileSync(`./${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html.txt`,content);
-                await conn.query({
-                    sql:"INSERT INTO page_history(sub_page_id, page_source, page_history, date_added) VALUES(?,?,?,?)",
-                    values:[obj.getId(), content, "{}", new Date().toISOString().slice(0, 19).replace('T', ' ')]
-                });
-            }else{
-                // console.log("history found...");
-                let page_now = await obj.getContent();
-                //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html`,page_now);
-                //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`,page_now);
-                //throw new Error();
-                if(!page_now){
-                    throw new Error(`Page data is not available.. Maybe ${this.name}@${this.id}} layout changed?`);
-                }
-
-                let page_old = zlib.inflateSync(Buffer.from(history[0].page_source, 'base64')).toString();
-                
-                // Compare two pages
-                let result = compareHTML(page_old, page_now)
-
-                if(typeof(result.different) != 'boolean'){
-                    throw new Error("Result different is not boolean.");
-                }
-                let sections : any[] = [];
-
-                if(result.different === true){
-                    console.log(`ID : ${obj.getId()} ${obj.getName()} has changed. Updating..`);
-                    console.log("-----");
-                    for(const change of result.changes){
-                        let node;
-                        switch(change.type) {
-                            case 'added':
-                            case 'modified':
-                                change.after.$node.addClass("changed-node");
-                                node = change.after.$node.closest(".section.main");
-                                
-                            
-                                console.log('added/ modified')
-                                break;
-                            case 'changed':
-                                change.after.$node.parent().addClass("changed-node");
-                                node = change.after.$node.closest(".section.main");
-                                
-                                console.log('changed');
-                        /*case 'removed':
-                                node = change.before.$node.closest(".section"); */
-                        }
-                        if(node && !sections.includes(node)){
-                            sections.push(node);
-                        }else if(!node){
-                            sections.push(change.type);
-                        }
+                    // TODO - Notify groups
+                    if(result){
+                        TelegramBot.sendMessagesToSubscribed(this.id,`Module\n<a href="${obj.getfullURL()}">${obj.getName()}</a>\nhas changed.\nVisit <a href="https://stargazer39.github.io/${obj.getId()}/latest/">here</a> to see changes.`);
+                        console.log(`Notifying site_id = ${this.id} subscribers`);
                     }
-                    let ids : string[] = [];
-                    let section_htmls = sections.filter((sect) => {
-
-                        if(typeof(sect) == 'string'){
-                            return `<div class="notice"> There is some hidden ${sect} sections. </div>`;
-                        }
-                        
-                        let id = result.$after(sect).attr("id");
-
-                        if(typeof(id) == 'string' && !ids.includes(id)){
-                            ids.push(id);
-                            return result.$after.html(sect);
-                        }
-                    });
-                    // add to database
-                    console.dir(section_htmls);
+                    done = true;
+                }catch(e){
+                    console.log(e);
+                    console.log(`Retrying ${obj.getId()} ${obj.getName()}`);
+                    retryCount--;
                 }
             }
         }
+        console.log(`Done ${new Date().toString()}`);
     }
+
+    private async syncPage(obj : SubPage, conn: mysql.Connection) : Promise<boolean> {
+        console.log(`Syncing ${obj.getId()}, name = ${obj.getName()}`);
+        // Get last history
+        let history = await conn.query({
+            sql:"SELECT id, page_source FROM page_history WHERE sub_page_id = ? ORDER BY id DESC LIMIT 1",
+            values:[obj.getId()]
+        });
+
+        if(history.length === 0){
+            console.log("No histroy. Adding page..");
+            let content = await obj.getContent();
+            
+            content =  zlib.deflateSync(content).toString('base64');
+            // fs.writeFileSync(`./${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html.txt`,content);
+            await conn.query({
+                sql:"INSERT INTO page_history(sub_page_id, page_source, page_history, date_added) VALUES(?,?,?,?)",
+                values:[obj.getId(), content, zlib.deflateSync(JSON.stringify([])).toString('base64'), new Date().toISOString().slice(0, 19).replace('T', ' ')]
+            });
+        }else{
+            // console.log("history found...");
+            let page_now = await obj.getContent();;
+
+            // Inject page for tests
+            /* if(obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase() == "communication_skills___it1040___2020_jul_"){
+               page_now = fs.readFileSync(`./tmp/${obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`).toString();
+            } */
+            //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html`,page_now);
+            //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`,page_now);
+            //throw new Error();
+            if(!page_now){
+                throw new Error(`Page data is not available.. Maybe ${this.name}@${this.id}} layout changed?`);
+            }
+
+            let page_old = zlib.inflateSync(Buffer.from(history[0].page_source, 'base64')).toString();
+            
+            // Compare two pages
+            let result = compareHTML(page_old, page_now)
+
+            if(typeof(result.different) != 'boolean'){
+                throw new Error("Result different is not boolean.");
+            }
+            let sections : any[] = [];
+            let change_messages : string[] = [];
+
+            if(result.different === true){
+                console.log(`ID : ${obj.getId()} ${obj.getName()} has changed. Updating..`);
+                console.log("-----");
+                for(const change of result.changes){
+                    let orig_node;
+                    let node;
+                    //console.log(change.type);
+                    switch(change.type) {
+                        case 'added':
+                        case 'modified':
+                            change.after.$node.addClass("changed-node");
+                            //orig_node = change.after.$node;
+                            //orig_node.html(`<mark>${orig_node.html()}</mark>`);
+                            node = change.after.$node.closest(".section.main");
+                            
+                        
+                            //console.log('added/ modified')
+                            break;
+                        case 'changed':
+                            //orig_node = change.after.$node.parent();
+                            //orig_node.html(`<mark>${orig_node.html()}</mark>`);
+                            change.after.$node.parent().addClass("changed-node");
+                            node = change.after.$node.closest(".section.main");
+                            
+                            //console.log('changed');
+                    /*case 'removed':
+                            node = change.before.$node.closest(".section"); */
+                    }
+                    if(node && !sections.includes(node)){
+                        sections.push(node);
+                    }else if(!node){
+                        sections.push(change.type);
+                    }
+                    console.log(change.type);
+                    console.log(change.message);
+                    change_messages.push(change.message);
+                }
+                let ids : string[] = [];
+                let section_htmls = sections.map((sect) => {
+
+                    if(typeof(sect) == 'string'){
+                        return `<div class="notice"> There is some hidden ${sect} sections. </div>`;
+                    }
+                    
+                    let id = result.$after(sect).attr("id");
+
+                    if(typeof(id) == 'string' && !ids.includes(id)){
+                        ids.push(id);
+                        return result.$after.html(sect);
+                    }
+                    return "";
+                });
+                section_htmls.filter((val) => { return (val) ? true : false; });
+                // TODO - add to database
+                let messages = change_messages.map((s) => { return convert.toHtml(s) });
+
+                let diff = {
+                    sections : section_htmls,
+                    messages : messages
+                };
+                page_now = zlib.deflateSync(page_now).toString('base64');
+                await conn.query({
+                    sql:"INSERT INTO page_history(sub_page_id, page_source, page_history, date_added) VALUES(?,?,?,?)",
+                    values:[obj.getId(), page_now, zlib.deflateSync(JSON.stringify(diff)).toString('base64'), new Date().toISOString().slice(0, 19).replace('T', ' ')]
+                });
+                // console.log(section_htmls);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // private async notifyTelegram(message : string): Promise<void>{
+    //     await 
+    // }
 
     private async login(): Promise<boolean> {
         await axios.get("https://courseweb.sliit.lk/", { jar: this.cookieJar, withCredentials: true });

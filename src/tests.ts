@@ -1,40 +1,36 @@
-import { TelegramBot } from "./TelegramBot";
+import { TelegramBot } from "./TelegramBot/TelegramBot";
 import { SqlConnect } from "./SqlConnect";
 import { SliitCompareble } from "./Sliit/SllitCompareble";
 import { compareHTML } from "./DomCompare";
 
 import fs from "fs";
+import { Telegram } from "telegraf";
+import { SiteComparable } from "./SiteCompareble";
 
-function testBot(){
-    SqlConnect.init().then(
-        (conn)=> {
-            TelegramBot.init().then(() => {
-                console.log("Test passses.");
-                TelegramBot.start().then(() => {
-                    console.log("Bot successfully stared.");
-                    let comp = new SliitCompareble(1,"sliit1");
-                    comp.init({
-                        username:"it20603618",
-                        password: "wasd!@#123",
+async function testBot() : Promise<void>{
+    await SqlConnect.init();
+    await TelegramBot.init();
+    await TelegramBot.start();
 
-                    }).then(() => {
-                        console.log("init success");
-                        comp.syncPages().then(()=> {
-                            comp.syncWithDB();
-                        });
-                    });
-                }).catch((e) => {
-                    throw e;
-                });
-            })
-            .catch((e) => {
-                throw e;
-            });
-        }
-    )
-    .catch((e) => {
-        throw e;
-    });
+    let comparebles : SiteComparable[] = [];
+    // Get all the sites
+    let conn = await SqlConnect.getInstance();
+    let sites = await conn.query("SELECT id,name,extra FROM sites");
+
+    for(let site of sites){
+        const id = site.id;
+        const name = site.name;
+        const extra = JSON.parse(site.extra);
+
+        let comp = new SliitCompareble(id, name);
+        await comp.init(extra);
+        comparebles.push(comp);
+    }
+
+    for(let comp of comparebles){
+        await comp.syncPages();
+        await comp.syncWithDB();
+    }
 }
 
 function tryDiff(){
@@ -92,7 +88,7 @@ function tryDiff(){
             if(typeof(sect) == 'string'){
                 return `<div class="notice"> There is some hidden ${sect} sections. </div>`;
             }
-            
+
             let id = result.$after(sect).attr("id");
 
             if(typeof(id) == 'string' && !ids.includes(id)){
@@ -105,4 +101,6 @@ function tryDiff(){
     }else{
     }
 }
-tryDiff();
+
+//tryDiff();
+testBot();
