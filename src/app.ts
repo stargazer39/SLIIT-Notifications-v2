@@ -25,12 +25,12 @@ async function run() : Promise<void>{
         let comp = new SliitCompareble(id, name);
         await comp.init(extra);
         comparebles.push(comp);
-        await comp.syncPages();
     }
 
     while(true){
         for(let comp of comparebles){
             try{
+                await comp.syncPages();
                 await comp.syncWithDB();
             }catch(err){
                 comp.reloadSubPages();
