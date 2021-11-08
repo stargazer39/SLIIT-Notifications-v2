@@ -7,6 +7,11 @@ import fs from "fs";
 import { Telegram } from "telegraf";
 import { SiteComparable } from "./SiteCompareble";
 
+import dotenv from "dotenv";
+
+dotenv.config()
+
+
 async function testBot() : Promise<void>{
     await SqlConnect.init();
     await TelegramBot.init();

@@ -6,7 +6,6 @@ import mysql from 'promise-mysql';
 import { subscribeScene } from './SubscribeScene';
 
 
-const CREDS_PATH = "config/credentials.json";
 const MAX_LENGTH = 3500;
 const MESSAGE_TIMEOUT = 1000;
 
@@ -33,8 +32,7 @@ export class TelegramBot {
                 this.chatIds.push(row.chat_id);
             }
 
-            this.token = this.getToken();
-            this.bot = new Telegraf(this.token);
+            this.bot = new Telegraf(process.env.TELEGRAM_TOKEN);
             // this.bot.use(session());
             // const stage = new Scenes.Stage([subscribeScene]);
 
@@ -141,21 +139,6 @@ export class TelegramBot {
             }
         }catch(e){
             console.log(e);
-        }
-    }
-
-    private static getToken() {
-        if(!this.token){
-            let creds = fs.readFileSync(CREDS_PATH)
-            let credJson : any = JSON.parse(creds.toString());
-    
-            if(!Object.keys(credJson).includes("botToken")){
-                throw new Error("File dosent contain a valid BotToken");
-            }
-
-            return credJson["botToken"];
-        }else{
-            return this.token;
         }
     }
 }

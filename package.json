@@ -32,6 +32,7 @@
     "axios-retry": "^3.2.4",
     "cheerio": "^1.0.0-rc.10",
     "cheerio-get-css-selector": "^2.0.0",
+    "dotenv": "^10.0.0",
     "express": "^4.17.1",
     "html-compare": "0.0.1",
     "i": "^0.3.6",

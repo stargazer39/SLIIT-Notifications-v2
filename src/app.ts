@@ -3,6 +3,9 @@ import { SqlConnect } from "./SqlConnect";
 import { SliitCompareble } from "./Sliit/SllitCompareble";
 import { SiteComparable } from "./SiteCompareble";
 import { sleep } from "./common";
+import dotenv from "dotenv";
+
+dotenv.config()
 
 async function run() : Promise<void>{
     await SqlConnect.init();
