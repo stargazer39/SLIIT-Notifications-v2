@@ -1,90 +1,46 @@
-import express from "express";
-import { SliitAPI, CourseModule } from "./sliit";
-import  { MongoClient } from 'mongodb';
-import readline from "readline";
-import fs from "fs";
-import { SyncTask } from './syncTasks';
-import { sleep } from './common';
-import { TelegramClient } from './telegram';
+import { TelegramBot } from "./TelegramBot/TelegramBot";
+import { SqlConnect } from "./SqlConnect";
+import { SliitCompareble } from "./Sliit/SllitCompareble";
+import { SiteComparable } from "./SiteCompareble";
+import { sleep } from "./common";
 
-const port = process.env.PORT || 4200;
-const app = express();
+async function run() : Promise<void>{
+    await SqlConnect.init();
+    await TelegramBot.init();
+    await TelegramBot.start();
 
-let sliit : SliitAPI;
-let task : SyncTask;
+    let comparebles : SiteComparable[] = [];
+    // Get all the sites
+    let conn = await SqlConnect.getInstance();
+    let sites = await conn.query("SELECT id,name,extra FROM sites");
 
-// Username password test code
-let file = fs.readFileSync("tmp/credentials.json");
-let creds = JSON.parse(file.toString());
-console.log(`Configured with creds : ${creds.username} , ${creds.password}`);
+    for(let site of sites){
+        const id = site.id;
+        const name = site.name;
+        const extra = JSON.parse(site.extra);
 
-// Initialize Mongo client
-const mongo = new MongoClient(creds.url,{ useUnifiedTopology: true });
+        let comp = new SliitCompareble(id, name);
+        await comp.init(extra);
+        comparebles.push(comp);
+        await comp.syncPages();
+    }
 
-// Initalize new Telegram client
-const tclient = new TelegramClient(creds.botToken);
-
-async function run() {
-    // TODO check why memory leak happen
-    process.setMaxListeners(Infinity);
-    
-    try {
-        await mongo.connect();
-
-        // Current db
-        const db = mongo.db("SLIITHistory");
-
-        // Verify conncection
-        await db.command({ ping:1 });
-        console.log("Connected to Mongo server");
-
-        // Get configurations from DB
-        let config = await db.collection("config").findOne({ type:"config" });
-        console.log(config);
-
-        // Set DB instance and start Telegram client
-        tclient.setdb(db);
-        tclient.setConfig(config);
-        await tclient.launch();
-
-        // Start Sync Tasks
-        task = new SyncTask(30, creds.username, creds.password);
-        task.setDB(db);
-        task.setTclient(tclient);
-        await task.init();
-        task.start();
-    }catch(e){
-        // TODO - connect to telegram for error notifications
-        console.dir(e);
+    while(true){
+        for(let comp of comparebles){
+            try{
+                await comp.syncWithDB();
+            }catch(err){
+                comp.reloadSubPages();
+                try{
+                    console.log(err.stack);
+                }catch(e){
+                    console.log(err);
+                }
+                console.warn(`Error occured in ${comp.getId()} ${comp.getName()}`);
+            }
+        }
+        await sleep(1000*60*1);
     }
 }
 
-run().catch(console.dir);
-
-
-/* 
-MongoClient.connect(creds.url, { useNewUrlParser: true }, (err, client) => {
-
-    if(err) {
-        throw err;
-    }
-    const db = client.db("SLIITHistory")
-})
-
-let task : SyncTask;
-
-mongo.connect(async (err : boolean,msg : string) => {
-    if(err){
-        console.log("Mongo connection faild.");
-        return;
-    }
-    console.log("Starting Task");
-    const telegramClient = new TelegramClient(creds.botToken, mongo);
-    //telegramClient.send("Hi");
-    telegramClient.launch();
-    task = new SyncTask(30, creds.username, creds.password, mongo, telegramClient);
-    task.start();
-    app.listen(port, () => {
-        console.log(`Server is listening on ${port}`);
-    });
-}) */
+run().catch(console.warn);

@@ -7,6 +7,7 @@ import { compareHTML } from "../DomCompare";
 import { TelegramBot } from "../TelegramBot/TelegramBot";
 
 import axios from "axios";
+import axiosRetry from "axios-retry";
 import axiosCookieJarSupport from "axios-cookiejar-support";
 import cheerio from "cheerio";
 import querystring from "querystring";
@@ -18,6 +19,7 @@ const Convert = require('ansi-to-html');
 const convert = new Convert();
 
 axiosCookieJarSupport(axios);
+axiosRetry(axios, { retries: 10, shouldResetTimeout: true });
 
 export class SliitCompareble extends SiteComparable {
     private extra : ISliitComparebleExtra = null;
@@ -71,12 +73,11 @@ export class SliitCompareble extends SiteComparable {
             });
         }
         
-
+        // Sync each course
         for(const c of mycourses){
             let elem = $(c);
             let name = elem.text().trim();
 
-            let id = 0;
             if(name) { 
                 let href =  elem.attr("href");
 
@@ -113,15 +114,6 @@ export class SliitCompareble extends SiteComparable {
 
                         console.dir(page.id);
                     }
-                    
-
-                    
-                    // let sp = new SliitPage(id++, name, href);
-                    // sp.setExtra({
-                    //     username: this.extra.username,
-                    //     cookieJar: this.extra.cookieJar
-                    // });
-                    // this.setSubPage(sp);
                 }catch(e){
                     console.log(e);
                 }
@@ -129,7 +121,7 @@ export class SliitCompareble extends SiteComparable {
             }
         }
 
-        // Refresh objects
+        // Get all existing pages
         let pages = await conn.query({
             sql:"SELECT id, name, site_id, added_date, last_synced, full_url FROM sub_pages WHERE site_id = ?",
             values:[this.id]
@@ -179,8 +171,8 @@ export class SliitCompareble extends SiteComparable {
                     let result = await this.syncPage(obj,conn);
 
                     // TODO - Notify groups
-                    if(result){
-                        TelegramBot.sendMessagesToSubscribed(this.id,`Module\n<a href="${obj.getfullURL()}">${obj.getName()}</a>\nhas changed.\nVisit <a href="https://stargazer39.github.io/${obj.getId()}/latest/">here</a> to see changes.`);
+                    if(result.success){
+                        TelegramBot.sendMessagesToSubscribed(this.id,`Module\n<a href="${obj.getfullURL()}">${obj.getName()}</a>\nhas changed.\nVisit <a href="https://sliitnotify.herokuapp.com/history/${result.id}">here</a> to see changes.`);
                         console.log(`Notifying site_id = ${this.id} subscribers`);
                     }
                     done = true;
@@ -194,7 +186,7 @@ export class SliitCompareble extends SiteComparable {
         console.log(`Done ${new Date().toString()}`);
     }
 
-    private async syncPage(obj : SubPage, conn: mysql.Connection) : Promise<boolean> {
+    private async syncPage(obj : SubPage, conn: mysql.Connection) : Promise<{ success : boolean, id? : number }> {
         console.log(`Syncing ${obj.getId()}, name = ${obj.getName()}`);
         // Get last history
         let history = await conn.query({
@@ -213,16 +205,14 @@ export class SliitCompareble extends SiteComparable {
                 values:[obj.getId(), content, zlib.deflateSync(JSON.stringify([])).toString('base64'), new Date().toISOString().slice(0, 19).replace('T', ' ')]
             });
         }else{
-            // console.log("history found...");
+            console.log(`Starting compare ${obj.getId()}, name = ${obj.getName()}`);
             let page_now = await obj.getContent();;
 
             // Inject page for tests
-            /* if(obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase() == "communication_skills___it1040___2020_jul_"){
-               page_now = fs.readFileSync(`./tmp/${obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`).toString();
-            } */
-            //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html`,page_now);
-            //fs.writeFileSync(`./tmp/${key.replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`,page_now);
-            //throw new Error();
+            // if(obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase() == "communication_skills___it1040___2020_jul_"){
+            //    page_now = fs.readFileSync(`./tmp/${obj.getName().replace(/[^a-z0-9]/gi, '_').toLowerCase()}new.html`).toString();
+            // }
+
             if(!page_now){
                 throw new Error(`Page data is not available.. Maybe ${this.name}@${this.id}} layout changed?`);
             }
@@ -242,27 +232,17 @@ export class SliitCompareble extends SiteComparable {
                 console.log(`ID : ${obj.getId()} ${obj.getName()} has changed. Updating..`);
                 console.log("-----");
                 for(const change of result.changes){
-                    let orig_node;
                     let node;
-                    //console.log(change.type);
                     switch(change.type) {
                         case 'added':
                         case 'modified':
                             change.after.$node.addClass("changed-node");
-                            //orig_node = change.after.$node;
-                            //orig_node.html(`<mark>${orig_node.html()}</mark>`);
                             node = change.after.$node.closest(".section.main");
-                            
-                        
-                            //console.log('added/ modified')
                             break;
                         case 'changed':
-                            //orig_node = change.after.$node.parent();
-                            //orig_node.html(`<mark>${orig_node.html()}</mark>`);
-                            change.after.$node.parent().addClass("changed-node");
+                            change.after.$node.addClass("changed-node");
                             node = change.after.$node.closest(".section.main");
-                            
-                            //console.log('changed');
+                            break;
                     /*case 'removed':
                             node = change.before.$node.closest(".section"); */
                     }
@@ -271,8 +251,6 @@ export class SliitCompareble extends SiteComparable {
                     }else if(!node){
                         sections.push(change.type);
                     }
-                    console.log(change.type);
-                    console.log(change.message);
                     change_messages.push(change.message);
                 }
                 let ids : string[] = [];
@@ -291,7 +269,7 @@ export class SliitCompareble extends SiteComparable {
                     return "";
                 });
                 section_htmls.filter((val) => { return (val) ? true : false; });
-                // TODO - add to database
+                // Add to database
                 let messages = change_messages.map((s) => { return convert.toHtml(s) });
 
                 let diff = {
@@ -299,20 +277,16 @@ export class SliitCompareble extends SiteComparable {
                     messages : messages
                 };
                 page_now = zlib.deflateSync(page_now).toString('base64');
-                await conn.query({
+                let query_result = await conn.query({
                     sql:"INSERT INTO page_history(sub_page_id, page_source, page_history, date_added) VALUES(?,?,?,?)",
                     values:[obj.getId(), page_now, zlib.deflateSync(JSON.stringify(diff)).toString('base64'), new Date().toISOString().slice(0, 19).replace('T', ' ')]
                 });
-                // console.log(section_htmls);
-                return true;
+                console.dir(query_result);
+                return { success: true, id : query_result.insertId };
             }
         }
-        return false;
+        return { success: false };
     }
-
-    // private async notifyTelegram(message : string): Promise<void>{
-    //     await 
-    // }
 
     private async login(): Promise<boolean> {
         await axios.get("https://courseweb.sliit.lk/", { jar: this.cookieJar, withCredentials: true });
@@ -327,7 +301,6 @@ export class SliitCompareble extends SiteComparable {
                                     jar:this.cookieJar,
                                     withCredentials: true
                                 });
-        fs.writeFileSync("./pp.html",loggedInPage.data);
         let doc = cheerio.load(loggedInPage.data)
         return this.assertLogin(doc, this.extra.username);
     }

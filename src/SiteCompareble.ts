@@ -17,4 +17,10 @@ export abstract class SiteComparable {
     public abstract setSubPage(page : SubPage) : void;
     public abstract syncPages(): Promise<void>;
     public abstract syncWithDB() : Promise<void>;
+    public getName(): string {
+        return this.name;
+    }
+    public getId(): number {
+        return this.id;
+    }
 }

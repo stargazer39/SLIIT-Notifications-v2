@@ -12,6 +12,7 @@ async function testBot() : Promise<void>{
     await TelegramBot.init();
     await TelegramBot.start();
 
+    TelegramBot.sendMessagesToSubscribed(1,"tst");
     let comparebles : SiteComparable[] = [];
     // Get all the sites
     let conn = await SqlConnect.getInstance();

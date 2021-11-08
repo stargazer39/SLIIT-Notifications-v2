@@ -2,8 +2,11 @@ import { SubPage } from "../SubPage";
 import { ISliitPage } from "./ISliitPage"
 import tough  from "tough-cookie";
 import axios from "axios";
+import axiosRetry from "axios-retry";
 import cheerio from "cheerio";
 import { AssertError } from "./AssertErrors";
+
+axiosRetry(axios, { retries: 10, shouldResetTimeout: true });
 
 export class SliitPage extends SubPage {
     protected extra : ISliitPage;
@@ -27,6 +30,7 @@ export class SliitPage extends SubPage {
     }
 
     public async getContent(): Promise<string> {
+        let done = false;
         const $ = await this.getPage();
         return $.html($(".course-content"));
     }

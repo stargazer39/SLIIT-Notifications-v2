@@ -120,16 +120,24 @@ export class TelegramBot {
     }
 
     public static async sendMessagesToSubscribed(site_id : number, message : string){
+        let conn = SqlConnect.getInstance();
         try{
-            let conn = SqlConnect.getInstance();
             let chat_ids = await conn.query({
                 sql:"SELECT group_id FROM telegram_subscribed WHERE site_id = ?", 
                 values: [site_id]
             });
 
             for(let obj of chat_ids){
-                this.sendMessage(message, obj.group_id);
-                console.log(`Sent to group : ${obj.chat_id}`);
+               try{
+                    this.sendMessage(message, obj.group_id);
+                    console.log(`Sent to group : ${obj.group_id}`);
+               }catch(e){
+                await conn.query({ 
+                    sql:"INSERT INTO telegram_unsent(chat_id, message, reason) VALUES (?,?,?)",
+                    values:[obj.group_id, message, JSON.stringify(e) as string | "Unknown Reason"]
+                });
+                console.log(e);
+               }
             }
         }catch(e){
             console.log(e);
