@@ -127,7 +127,7 @@ export class TelegramBot {
 
             for(let obj of chat_ids){
                try{
-                    this.sendMessage(message, obj.group_id);
+                    await this.sendMessage(message, obj.group_id);
                     console.log(`Sent to group : ${obj.group_id}`);
                }catch(e){
                 await conn.query({ 
