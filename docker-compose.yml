@@ -1,0 +1,11 @@
+version: "3"
+services:
+  bot:
+    build: .
+    environment:
+      - SQL_HOST=${SQL_HOST}
+      - SQL_USER=${SQL_USER}
+      - SQL_PASSWORD=${SQL_PASSWORD}
+      - SQL_DATABASE=${SQL_DATABASE}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+    restart: unless-stopped

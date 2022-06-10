@@ -34,11 +34,6 @@ async function run() : Promise<void>{
                 await comp.syncWithDB();
             }catch(err){
                 comp.reloadSubPages();
-                try{
-                    console.log(err.stack);
-                }catch(e){
-                    console.log(err);
-                }
                 console.warn(`Error occured in ${comp.getId()} ${comp.getName()}`);
             }
         }
@@ -46,4 +41,7 @@ async function run() : Promise<void>{
     }
 }
 
-run().catch(console.warn);
+run().catch(e => {
+    console.error(e);
+    process.exit(0);
+});
