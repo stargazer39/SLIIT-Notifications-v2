@@ -43,5 +43,5 @@ async function run() : Promise<void>{
 
 run().catch(e => {
     console.error(e);
-    process.exit(0);
+    process.exit(-1);
 });
