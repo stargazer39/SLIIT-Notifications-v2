@@ -163,7 +163,7 @@ export class SliitCompareble extends SiteComparable {
         let conn = SqlConnect.getInstance();
 
         for(let[key, obj] of this.subPages.entries()){
-            let retryCount = 10;
+            let retryCount = 3;
             let done = false;
 
             while(!done && retryCount > 0){
