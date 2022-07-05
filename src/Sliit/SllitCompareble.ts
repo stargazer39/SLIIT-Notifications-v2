@@ -44,7 +44,7 @@ export class SliitCompareble extends SiteComparable {
 
     public async syncPages(): Promise<void> {
         let res, $;
-        res = await axios.get("https://courseweb.sliit.lk/my/",{ jar:this.cookieJar, withCredentials: true });
+        res = await axios.get("https://lms.sliit.lk/my/",{ jar:this.cookieJar, withCredentials: true });
         $ = cheerio.load(res.data);
         
         // Assert if logged in
@@ -289,8 +289,8 @@ export class SliitCompareble extends SiteComparable {
     }
 
     private async login(): Promise<boolean> {
-        await axios.get("https://courseweb.sliit.lk/", { jar: this.cookieJar, withCredentials: true });
-        let loggedInPage = await axios.post("https://courseweb.sliit.lk/login/index.php?authldap_skipntlmsso=1",
+        await axios.get("https://lms.sliit.lk/", { jar: this.cookieJar, withCredentials: true });
+        let loggedInPage = await axios.post("https://lms.sliit.lk/login/index.php?authldap_skipntlmsso=1",
                                     querystring.stringify({
                                         username:this.extra.username,
                                         password:this.extra.password

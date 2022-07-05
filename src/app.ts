@@ -23,7 +23,14 @@ async function run() : Promise<void>{
         const extra = JSON.parse(site.extra);
 
         let comp = new SliitCompareble(id, name);
-        await comp.init(extra);
+
+        try{
+            await comp.init(extra);
+        }catch(e){
+            console.error(e);
+            continue;
+        }
+        
         comparebles.push(comp);
     }
 
@@ -33,8 +40,14 @@ async function run() : Promise<void>{
                 await comp.syncPages();
                 await comp.syncWithDB();
             }catch(err){
-                comp.reloadSubPages();
-                console.warn(`Error occured in ${comp.getId()} ${comp.getName()}`);
+                console.log("Something went wrong.");
+                try{
+                    comp.reloadSubPages();
+                    console.warn(`Error occured in ${comp.getId()} ${comp.getName()}`);
+                }catch(e){
+                    console.error(e);
+                    continue;
+                }
             }
         }
         await sleep(1000*60*1);
